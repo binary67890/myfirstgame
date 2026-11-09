@@ -1,6 +1,7 @@
 import json
 import random
 from difflib import SequenceMatcher
+from pathlib import Path
 
 def is_similar(user_input, correct_answer):
     user_input = user_input.replace(" ", "").lower()
@@ -11,15 +12,26 @@ def is_similar(user_input, correct_answer):
     return ratio >= 0.6
 
 def load_quizzes():
-    with open('state.json', 'r', encoding='utf-8') as f:
+    with Path(__file__).resolve().with_name('state.json').open(encoding='utf-8') as f:
         data = json.load(f)
-        # 데이터 구조가 사전형태면 'quizzes' 키의 값을, 아니면 데이터 전체를 리스트로 반환
-        if isinstance(data, dict) and 'quizzes' in data:
-            return data['quizzes']
-        return data
+    quizzes = data.get('quizzes') if isinstance(data, dict) else data
+    if not isinstance(quizzes, list) or not quizzes:
+        raise ValueError('퀴즈 데이터는 하나 이상의 문제가 있는 목록이어야 합니다.')
+    for index, quiz in enumerate(quizzes, 1):
+        if not isinstance(quiz, dict):
+            raise ValueError(f'{index}번 문제는 객체 형식이어야 합니다.')
+        for field in ('question', 'answer'):
+            value = quiz.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f'{index}번 문제의 {field}는 비어 있지 않은 문자열이어야 합니다.')
+    return quizzes
 
 def play_game():
-    quizzes = load_quizzes()
+    try:
+        quizzes = load_quizzes()
+    except (OSError, UnicodeError, ValueError) as error:
+        print(f'퀴즈 데이터를 불러올 수 없습니다: {error}')
+        return
     
     # 문제를 무작위로 섞습니다.
     random.shuffle(quizzes)
@@ -30,7 +42,6 @@ def play_game():
     print("--------------------------------")
 
     for i, q in enumerate(quizzes, 1):
-        # q가 사전(dict) 형태여야 q['question']이 작동합니다.
         print(f"\n문제 {i}: {q['question']}")
         user_answer = input("정답을 입력하세요: ").strip()
 
