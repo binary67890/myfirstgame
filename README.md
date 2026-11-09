@@ -34,3 +34,7 @@ README.md: 프로젝트 설명서
 git add README.md
 git commit -m "docs: 프로젝트 설명(README.md) 작성"
 git push origin main
+
+사무실 컴퓨터에서 이어 작업
+git clone [주소]
+예상 했던 토큰을 묻는 질문이 없어서 테스트 실시
