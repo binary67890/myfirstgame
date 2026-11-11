@@ -219,6 +219,26 @@ python3 -B -m unittest discover -s tests -v
 
 ![최고 점수 확인 화면](screenshots/06-best-score.png)
 
+## 개발 환경 및 Git 작업 기록
+
+### Git 커밋 기록 및 브랜치 병합
+
+개발 과정에서 남긴 Git 커밋 기록과 브랜치 병합 내역입니다.
+
+![Git 커밋 기록 및 브랜치 병합](screenshots/07-git-history.png)
+
+### VS Code 개발 환경과 Python 3.10.12
+
+VS Code에서 프로젝트를 개발하는 화면과 Python 3.10.12 버전 확인 모습입니다.
+
+![VS Code 개발 환경과 Python 3.10.12](screenshots/08-python-version.png)
+
+### Git 사용자 설정과 GitHub 저장소 연결
+
+Git 사용자 설정과 프로젝트의 GitHub 원격 저장소 연결을 확인하는 화면입니다.
+
+![Git 사용자 설정과 GitHub 저장소 연결](screenshots/09-git-config.png)
+
 ## 향후 업데이트 계획
 
 - 더 많은 성경 문제 추가
