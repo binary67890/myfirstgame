@@ -23,10 +23,16 @@ class QuizGame:
         self.scores: list[tuple[int, int]] = []
 
     @staticmethod
-    def read_answer_number() -> str:
-        """유효한 번호를 입력할 때까지 현재 문제에서 기다립니다."""
+    def read_answer_number(quiz: Quiz | None = None) -> str:
+        """번호를 입력받으며, 풀이 중에는 ?로 힌트를 확인합니다."""
+        prompt = ("정답 번호를 입력하세요 (1~4, 힌트: ?): " if quiz is not None
+                  else "정답 번호를 입력하세요 (1~4): ")
         while True:
-            value = input("정답 번호를 입력하세요 (1~4): ").strip()
+            value = input(prompt).strip()
+            if value == '?' and quiz is not None:
+                print(f"힌트: {quiz.hint}" if quiz.hint is not None
+                      else "이 문제에는 힌트가 없습니다.")
+                continue
             if value in ('1', '2', '3', '4'):
                 return value
             print("1부터 4 사이의 번호를 입력해 주세요.")
@@ -77,7 +83,7 @@ class QuizGame:
             if 'choices' in q:
                 quiz = Quiz(q['question'], q['choices'], q['answer_number'], q.get('hint'))
                 quiz.display_question()
-                user_answer = self.read_answer_number()
+                user_answer = self.read_answer_number(quiz)
                 correct = quiz.check_answer(user_answer)
             else:
                 print(q['question'])

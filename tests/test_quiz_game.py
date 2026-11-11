@@ -75,6 +75,43 @@ class QuizGameTests(unittest.TestCase):
                 if payload is not None:
                     self.assertEqual(self.path.read_bytes(), payload)
 
+    def test_hints_keep_question_order_and_scoring(self):
+        quizzes = self.data['quizzes']
+        original = self.path.read_bytes()
+        inputs = ['1']
+        for index, quiz in enumerate(quizzes):
+            answer = quiz['answer_number'] if index % 2 == 0 else quiz['answer_number'] % 4 + 1
+            inputs.extend(['?', ' ? ', 'invalid', str(answer)])
+        text = self.run_menu(inputs + ['5'])
+        self.assertEqual(self.game.scores, [(5, 10)])
+        positions = [text.index(quiz['question']) for quiz in quizzes]
+        self.assertEqual(positions, sorted(positions))
+        for number, quiz in enumerate(quizzes, 1):
+            self.assertEqual(text.count(quiz['question']), 1)
+            self.assertEqual(text.count(f'문제 {number}/10'), 1)
+            self.assertEqual(text.count(f"힌트: {quiz['hint']}"), 2)
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_missing_and_null_hints_allow_answer_retry(self):
+        quizzes = self.data['quizzes']
+        quizzes[0].pop('hint', None)
+        quizzes[1]['hint'] = None
+        self.path.write_text(json.dumps(self.data), encoding='utf-8')
+        answers = [str(quiz['answer_number']) for quiz in quizzes]
+        text = self.run_menu(['1', '?', answers[0], '?', answers[1]] + answers[2:] + ['5'])
+        self.assertEqual(text.count('이 문제에는 힌트가 없습니다.'), 2)
+        self.assertEqual(self.game.scores, [(10, 10)])
+
+    def test_add_quiz_does_not_accept_hint_request_as_answer(self):
+        text = self.run_menu(['2', '새 문제', 'A', 'B', 'C', 'D', '?', '2', '', '5'])
+        saved = json.loads(self.path.read_text(encoding='utf-8'))
+        self.assertIn('1부터 4 사이의 번호를 입력해 주세요.', text)
+        self.assertNotIn('이 문제에는 힌트가 없습니다.', text)
+        self.assertEqual(saved['quizzes'][:-1], self.data['quizzes'])
+        self.assertEqual(saved['quizzes'][-1]['answer_number'], 2)
+        self.assertEqual(saved['quizzes'][-1]['answer'], 'B')
+        self.assertIsNone(saved['quizzes'][-1]['hint'])
+
     def test_blank_choice_does_not_save(self):
         original = self.path.read_bytes()
         text = self.run_menu(['2', '문제', 'A', '', 'C', 'D', '1', '', '5'])
