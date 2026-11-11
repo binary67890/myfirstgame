@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from quiz_game import QuizGame
+from quiz_game import QuizGame, is_similar, quiz_write_lock
 
 
 class QuizGameTests(unittest.TestCase):
@@ -124,7 +124,8 @@ class QuizGameTests(unittest.TestCase):
             text = self.run_menu(['2', '문제', 'A', 'B', 'C', 'D', '1', '', '5'])
         self.assertIn('추가할 수 없습니다', text)
         self.assertEqual(self.path.read_bytes(), original)
-        self.assertFalse(self.path.with_suffix('.json.tmp').exists())
+        self.assertEqual(list(self.path.parent.glob('*.tmp')), [])
+        self.assertFalse(self.path.with_name('state.json.lock').exists())
 
     def test_interrupted_input_does_not_record_or_save(self):
         for exception in (EOFError(), KeyboardInterrupt()):
@@ -134,6 +135,72 @@ class QuizGameTests(unittest.TestCase):
                 self.assertIn('입력이 중단', text)
                 self.assertEqual(self.game.scores, [])
                 self.assertEqual(self.path.read_bytes(), original)
+
+    def test_hint_retries_same_question_without_changing_score(self):
+        self.data['quizzes'] = self.data['quizzes'][:1]
+        self.path.write_text(json.dumps(self.data), encoding='utf-8')
+        q = self.data['quizzes'][0]
+        text = self.run_menu(['1', '?', '?', str(q['answer_number']), '5'])
+        self.assertEqual(text.count('힌트: ' + q['hint']), 2)
+        self.assertEqual(self.game.scores, [(1, 1)])
+
+    def test_subjective_requires_full_answer_and_supports_hint(self):
+        self.assertFalse(is_similar('엘리사', '엘리야'))
+        self.assertFalse(is_similar('창세', '창세기'))
+        self.assertTrue(is_similar('  Holy\t SPIRIT ', 'holy spirit'))
+        self.path.write_text(json.dumps([{'question': '누구?', 'answer': '엘리야',
+                                         'hint': '선지자입니다.'}]), encoding='utf-8')
+        text = self.run_menu(['1', '?', '엘리사', '1', '엘 리 야', '5'])
+        self.assertIn('힌트: 선지자입니다.', text)
+        self.assertEqual(self.game.scores, [(0, 1), (1, 1)])
+
+    def test_subjective_missing_and_null_hints_keep_order_and_score(self):
+        quizzes = [
+            {'question': '첫 번째 주관식', 'answer': 'Holy Spirit'},
+            {'question': '두 번째 주관식', 'answer': '창세기', 'hint': None},
+        ]
+        self.path.write_text(json.dumps(quizzes), encoding='utf-8')
+        original = self.path.read_bytes()
+        text = self.run_menu(['1', '?', ' ? ', ' HOLY\tSPIRIT ', '?', '창세', '5'])
+        self.assertEqual(text.count('이 문제에는 힌트가 없습니다.'), 3)
+        self.assertEqual(self.game.scores, [(1, 2)])
+        self.assertLess(text.index(quizzes[0]['question']), text.index(quizzes[1]['question']))
+        for number, quiz in enumerate(quizzes, 1):
+            self.assertEqual(text.count(quiz['question']), 1)
+            self.assertEqual(text.count(f'문제 {number}/2'), 1)
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_add_preserves_changes_made_while_waiting_for_input(self):
+        responses = iter(['새 문제', 'A', 'B', 'C', 'D', '1', ''])
+        def answer(prompt):
+            if prompt.startswith('추가할'):
+                updated = copy.deepcopy(self.data)
+                updated['quizzes'].append(dict(updated['quizzes'][0], id=100,
+                                               question='다른 실행의 문제'))
+                updated['other'] = '최신 값'
+                self.path.write_text(json.dumps(updated), encoding='utf-8')
+            return next(responses)
+        with patch('builtins.input', side_effect=answer), contextlib.redirect_stdout(io.StringIO()):
+            self.game.add_quiz()
+        saved = json.loads(self.path.read_text(encoding='utf-8'))
+        self.assertEqual(saved['quizzes'][-2]['question'], '다른 실행의 문제')
+        self.assertEqual(saved['quizzes'][-1]['id'], 101)
+        self.assertEqual(saved['other'], '최신 값')
+
+    def test_overlapping_save_is_rejected_without_modifying_file(self):
+        original = self.path.read_bytes()
+        with quiz_write_lock(self.path):
+            text = self.run_menu(['2', '문제', 'A', 'B', 'C', 'D', '1', '', '5'])
+        self.assertIn('다른 실행에서 저장 중', text)
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertFalse(self.path.with_name('state.json.lock').exists())
+
+    def test_list_format_can_add_quiz(self):
+        self.path.write_text(json.dumps(self.data['quizzes']), encoding='utf-8')
+        self.run_menu(['2', '문제', 'A', 'B', 'C', 'D', '1', '', '5'])
+        saved = json.loads(self.path.read_text(encoding='utf-8'))
+        self.assertIsInstance(saved, list)
+        self.assertEqual(len(saved), 11)
 
 
 if __name__ == '__main__':
