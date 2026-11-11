@@ -27,26 +27,93 @@ def quiz_write_lock(path: Path):
 
 
 class QuizGame:
-    """문제 파일, 게임 진행과 메뉴, 이번 실행의 점수 기록을 관리합니다."""
+    """문제 파일, 게임 진행과 메뉴, 저장된 점수 기록을 관리합니다."""
 
     def __init__(self, state_path: str | Path | None = None) -> None:
         self.state_path = (Path(state_path) if state_path is not None
                            else Path(__file__).resolve().with_name('state.json'))
         self.scores: list[tuple[int, int]] = []
+        self._pending_scores: list[tuple[int, int]] = []
+        try:
+            with self.state_path.open(encoding='utf-8') as f:
+                self.scores = self._read_scores(json.load(f))
+        except (OSError, UnicodeError, ValueError):
+            # 파일이 없어도 메뉴를 열고, 문제 파일 오류는 해당 메뉴에서 안내합니다.
+            pass
+
+    @staticmethod
+    def _read_scores(data):
+        """버전 없는 1점 단위 기록을 10점 단위로 환산합니다."""
+        if not isinstance(data, dict):
+            return []
+        version = data.get('scores_version', 1)
+        if type(version) is not int or version not in (1, 2):
+            raise ValueError('지원하지 않는 점수 기록 버전입니다.')
+        records = data.get('scores', [])
+        if not isinstance(records, list):
+            return []
+        multiplier = 10 if version == 1 else 1
+        limit = 1 if version == 1 else 10
+        return [(record[0] * multiplier, record[1]) for record in records
+                if isinstance(record, list) and len(record) == 2
+                and all(type(value) is int for value in record)
+                and 0 <= record[0] <= record[1] * limit and record[1] > 0]
+
+    @staticmethod
+    def _write_data(path, data):
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
+                                             dir=path.parent, prefix=path.name + '.',
+                                             suffix='.tmp', delete=False) as f:
+                temporary_path = Path(f.name)
+                json.dump(data, f, ensure_ascii=False, indent=4)
+                f.write('\n')
+            temporary_path.replace(path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+    def _record_score(self, score, total):
+        record = (score, total)
+        self.scores.append(record)
+        self._pending_scores.append(record)
+        try:
+            path = self.state_path.resolve()
+            with quiz_write_lock(path):
+                data, quizzes = self._load_data()
+                if isinstance(data, list):
+                    data = {'quizzes': quizzes}
+                # 다른 실행에서 저장한 기록과 문제도 보존합니다.
+                scores = self._read_scores(data) + self._pending_scores
+                data['scores'] = scores
+                data['scores_version'] = 2
+                self._write_data(path, data)
+            self.scores = scores
+            self._pending_scores.clear()
+        except (OSError, UnicodeError, ValueError) as error:
+            print(f'점수 기록을 저장할 수 없습니다: {error}')
+            print('이번 결과는 현재 실행에서만 확인할 수 있습니다.')
 
     @staticmethod
     def read_answer_number(hint: str | None = None, *, allow_hint: bool = False) -> str:
         """번호를 입력받고, 퀴즈 풀이에서만 힌트 요청을 허용합니다."""
+        return QuizGame._read_answer_number_with_hint(hint, allow_hint=allow_hint)[0]
+
+    @staticmethod
+    def _read_answer_number_with_hint(hint=None, *, allow_hint=False):
+        hint_used = False
         prompt = ("정답 번호를 입력하세요 (1~4, 힌트: ?): " if allow_hint
                   else "정답 번호를 입력하세요 (1~4): ")
         while True:
             value = input(prompt).strip()
             if value == '?' and allow_hint:
+                hint_used = hint_used or hint is not None
                 print(f"힌트: {hint}" if hint is not None
                       else "이 문제에는 힌트가 없습니다.")
                 continue
             if value in ('1', '2', '3', '4'):
-                return value
+                return value, hint_used
             print("1부터 4 사이의 번호를 입력해 주세요.")
 
     def run(self) -> None:
@@ -101,11 +168,12 @@ class QuizGame:
         print("--------------------------------")
 
         for i, q in enumerate(quizzes, 1):
-            print(f"\n문제 {i}/{len(quizzes)} | 현재 점수: {score}점")
+            hint_used = False
+            print(f"\n문제 {i}/{len(quizzes)} | 현재 점수: {score}점 / {len(quizzes) * 10}점 만점")
             if 'choices' in q:
                 quiz = Quiz(q['question'], q['choices'], q['answer_number'], q.get('hint'))
                 quiz.display_question()
-                user_answer = self.read_answer_number(quiz.hint, allow_hint=True)
+                user_answer, hint_used = self._read_answer_number_with_hint(quiz.hint, allow_hint=True)
                 correct = quiz.check_answer(user_answer)
             else:
                 print(q['question'])
@@ -114,6 +182,7 @@ class QuizGame:
                     prompt = "정답을 입력하세요 (힌트: ?): "
                     user_answer = input(prompt).strip()
                     if user_answer == '?':
+                        hint_used = hint_used or hint is not None
                         print(f"힌트: {hint}" if hint is not None
                               else "이 문제에는 힌트가 없습니다.")
                         continue
@@ -122,15 +191,19 @@ class QuizGame:
 
             if correct:
                 print("✅ 정답입니다! 정말 잘하시네요! ❤️")
-                score += 1
+                if hint_used:
+                    print("힌트를 사용하여 이번 문제는 5점입니다.")
+                    score += 5
+                else:
+                    score += 10
             else:
                 print(f"❌ 아쉽습니다. 정답은 '{q['answer']}'입니다.")
-            print(f"현재 점수: {score}점 / 전체 {len(quizzes)}문제")
+            print(f"현재 점수: {score}점 / {len(quizzes) * 10}점 만점 (전체 {len(quizzes)}문제)")
 
         print("\n--------------------------------")
-        print(f"게임 종료! 총 {len(quizzes)}문제 중 {score}문제를 맞히셨습니다.")
+        print(f"게임 종료! 최종 점수: {score}점 / {len(quizzes) * 10}점 만점 (전체 {len(quizzes)}문제)")
         print("부모님, 오늘도 정말 고생 많으셨어요! 사랑합니다. 🥰")
-        self.scores.append((score, len(quizzes)))
+        self._record_score(score, len(quizzes))
         return score, len(quizzes)
 
 
@@ -153,18 +226,7 @@ class QuizGame:
                                 'question': quiz.question, 'answer': answer,
                                 'choices': quiz.choices, 'answer_number': quiz.answer,
                                 'hint': quiz.hint})
-                temporary_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
-                                                     dir=path.parent, prefix=path.name + '.',
-                                                     suffix='.tmp', delete=False) as f:
-                        temporary_path = Path(f.name)
-                        json.dump(data, f, ensure_ascii=False, indent=4)
-                        f.write('\n')
-                    temporary_path.replace(path)
-                finally:
-                    if temporary_path is not None:
-                        temporary_path.unlink(missing_ok=True)
+                self._write_data(path, data)
             print("퀴즈를 추가했습니다.")
         except (OSError, UnicodeError, ValueError) as error:
             print(f'퀴즈를 추가할 수 없습니다: {error}')
@@ -183,12 +245,15 @@ class QuizGame:
 
 
     def show_scores(self):
-        print("\n이번 실행의 점수 기록")
+        print("\n점수 기록")
         if not self.scores:
             print("아직 완료한 게임이 없습니다. 먼저 퀴즈를 풀어 주세요.")
             return
         for index, (score, total) in enumerate(self.scores, 1):
-            print(f"{index}회: 총 {total}문제 중 {score}문제 정답")
+            print(f"{index}회: {score}점 / {total * 10}점 만점 (전체 {total}문제)")
+
+        best_score, best_total = max(self.scores, key=lambda record: record[0])
+        print(f"최고 점수: {best_score}점 / {best_total * 10}점 만점 (총 {best_total}문제)")
 
     def _run_menu(self):
         while True:
