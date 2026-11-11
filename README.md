@@ -184,6 +184,20 @@ python3 -B -m unittest discover -s tests -v
 
 정상 실행 시 마지막에 `Ran 15 tests`와 `OK`가 표시됩니다.
 
+## 게임 실행 화면
+
+### 메인 메뉴 화면
+
+![기억 속의 은혜 메인 메뉴](screenshots/01-main-menu.png)
+
+### 성경 퀴즈 문제 풀이 화면
+
+![성경 퀴즈 문제 풀이 화면](screenshots/02-quiz-play.png)
+
+### 힌트 기능 실행 화면
+
+![힌트 기능 실행 화면](screenshots/03-quiz-hint.png)
+
 ## 향후 업데이트 계획
 
 - 더 많은 성경 문제 추가

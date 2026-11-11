@@ -216,3 +216,7 @@ class QuizGame:
                 break
             else:
                 print("잘못된 입력입니다. 1부터 5 사이의 번호를 입력해 주세요.")
+
+
+if __name__ == "__main__":
+    QuizGame().run()
