@@ -239,6 +239,13 @@ Git 사용자 설정과 프로젝트의 GitHub 원격 저장소 연결을 확인
 
 ![Git 사용자 설정과 GitHub 저장소 연결](screenshots/09-git-config.png)
 
+원격 저장소 URL 확인하는 화면입니다.
+![Git 사용자 설정과 GitHub 저장소 연결](screenshots/10-git-url.png)
+
+### 이 프로젝트는 모두 15개 이상의 커밋을 통해 단계적으로 개발되었습니다.
+최근 15개 이상의 의미 있는 커밋 로그(git log)를 확인하는 화면입니다.
+![터미널에서 지금까지 쌓은 커밋 기록](screenshots/11-git-log.png)
+
 ## 향후 업데이트 계획
 
 - 더 많은 성경 문제 추가
